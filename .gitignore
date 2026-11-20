@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.out
+
+# Recorded binary sensor captures
+*.bin
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
