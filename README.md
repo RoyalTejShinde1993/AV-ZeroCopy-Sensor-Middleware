@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚗 AV Zero-Copy Sensor Middleware
+# 🚗 AV Zero-Copy Sensor Middleware 🚗 
 
 ### C++20 / C11 Sensor Ingestion, Shared-Memory IPC & Telemetry Platform
 
