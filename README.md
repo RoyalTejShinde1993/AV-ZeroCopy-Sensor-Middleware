@@ -1,100 +1,400 @@
-# AV-ZeroCopy-Sensor-Middleware
+<div align="center">
 
-[![AV Middleware CI](https://github.com)](https://github.com)
+# 🚗 AV Zero-Copy Sensor Middleware
 
-**A deterministic, zero-copy C++20/C sensor abstraction, PTP time-synchronization, and fleet data-recording middleware engine engineered for heterogeneous Autonomous Vehicle (AV) compute platforms.**
+### A modern C++20 / C11 sensor-ingestion and telemetry middleware prototype
+
+**Shared-memory transport · Lock-free SPSC queues · Timestamp alignment · Binary recording · Optional CUDA integration**
+
+<br/>
+
+![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)
+![C11](https://img.shields.io/badge/C-11-A8B9CC?style=for-the-badge&logo=c&logoColor=black)
+![CMake](https://img.shields.io/badge/CMake-Build-064F8C?style=for-the-badge&logo=cmake&logoColor=white)
+![Linux](https://img.shields.io/badge/Platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![CUDA](https://img.shields.io/badge/CUDA-Optional-76B900?style=for-the-badge&logo=nvidia&logoColor=white)
+
+</div>
 
 ---
 
-## Architectural Overview
+## ✨ Project at a glance
 
-```text
-+---------------------------------------------------------------------------------------------------+
+AV Zero-Copy Sensor Middleware is a systems-programming prototype that explores a modular data path for autonomous-vehicle sensor workloads. It combines a C-compatible sensor interface with modern C++ components for shared-memory buffer management, SPSC queues, timestamp matching, CPU/GPU memory handoff, and binary telemetry recording.
 
-|                             SENSOR ABSTRACTION LAYER (SAL - C/C++20 ABI)                          |
-|  +-----------------------+       +-----------------------+       +-----------------------------+  |
-|  |  Front Camera (4K)    |       |  Roof LIDAR (128-Ch)  |       |  Vehicle CAN / IMU (200Hz)  |  |
-|  |  512 KB @ 30 FPS      |       |  256 KB @ 20 Hz       |       |  256 B @ 200 Hz             |  |
-|  +-----------+-----------+       +-----------+-----------+       +--------------+--------------+  |
-|              |                               |                                  |                 |
-|              +-------------------------------+----------------------------------+                 |
-|                                              | Direct Zero-Copy Payload Write                     |
-|                                              v                                                    |
-|  +---------------------------------------------------------------------------------------------+  |
-|  |             POSIX SHARED MEMORY POOL (/av_drive_sensor_pool - 256 MB Pre-Faulted)           |  |
-|  |   [ Slot 0 ]  [ Slot 1 ]  [ Slot 2 ]  ...  [ Slot 255 ]   (Atomic Lock-Free Ref-Counting)   |  |
-|  +-------------------------------------------+-------------------------------------------------+  |
-+----------------------------------------------|----------------------------------------------------+
-                                               | 64-Byte Cache-Aligned Descriptors (SPSC Ring)
-                                               v
-+---------------------------------------------------------------------------------------------------+
+<table>
+<tr>
+<td width="50%" valign="top">
 
-|                        REAL-TIME FUSION, GPU HANDOFF & FLEET RECORDER ENGINE                      |
-|  +---------------------------------+     +-----------------------------------------------------+  |
-|  |   PTP Timestamp Synchronizer    |---->|  GPU Zero-Copy Handoff (cudaHostAlloc / mlock DMA)  |  |
-|  |   (Nearest-Neighbor Skew Check) |     +-----------------------------------------------------+  |
-|  +---------------------------------+                                                              |
-|                                    +-----------------------------------------------------------+  |
-|                                    |  Binary Fleet Recorder (CRC32 + Zero-Alloc Packet Stream) |  |
-|                                    +-----------------------------+-----------------------------+  |
-+------------------------------------------------------------------|--------------------------------+
-                                                                   v
-                                                     [ av_fleet_capture.bin ]
-                                                                   |
-                                                                   v
-                                                   [ tools/inspect_recording.py ]
+### ⚡ Data-path engineering
+- Shared-memory payload pool
+- Atomic buffer reference counting
+- Cache-aligned SPSC queues
+- Pre-touched memory pages
+
+</td>
+<td width="50%" valign="top">
+
+### 🧭 Platform integration
+- C11 driver-facing ABI
+- Timestamp-based sensor matching
+- Optional CUDA mapped host memory
+- CPU-only fallback path
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🧪 Verification
+- CTest unit-test target
+- CRC32 recording validation
+- Python log inspection
+- Debug sanitizer build option
+
+</td>
+<td width="50%" valign="top">
+
+### 📦 Runtime
+- Staged service initialization
+- Reverse-order shutdown
+- Binary flight-recorder output
+- Configurable sample duration
+
+</td>
+</tr>
+</table>
+
+> [!NOTE]
+> **Project scope:** This is a software prototype and benchmark harness. The sample sensor streams and measurements are generated by the application; they are not evidence of operation with physical vehicle sensors, an NVIDIA DRIVE platform, production DMA, or automotive safety certification.
+
+## 🧱 Technology stack
+
+| Layer | Technology |
+|---|---|
+| Application | C++20 |
+| Driver-facing interface | C11 ABI |
+| Concurrency | C++ atomics, SPSC ring buffers |
+| Memory / IPC | POSIX shared memory, `mmap`, `mlock` fallback |
+| GPU integration | Optional CUDA mapped host allocation |
+| Build system | CMake, shell build runner |
+| Testing | CTest |
+| Telemetry inspection | Python 3 |
+
+## 🗺️ System architecture
+
+```mermaid
+flowchart TB
+    subgraph SAL["01 · Sensor abstraction — C11 ABI + C++20"]
+        CAM["Camera producer"]
+        LIDAR["LiDAR producer"]
+        CAN["CAN / IMU producer"]
+    end
+
+    subgraph DATA["02 · Shared-memory data plane"]
+        POOL["Preallocated payload buffer pool"]
+    end
+
+    subgraph CTRL["03 · Descriptor control plane"]
+        Q1["Camera SPSC queue"]
+        Q2["LiDAR SPSC queue"]
+        Q3["CAN / IMU SPSC queue"]
+    end
+
+    subgraph PROCESS["04 · Processing and recording"]
+        SYNC["Timestamp matcher"]
+        GPU["CPU / optional CUDA handoff"]
+        REC["Binary flight recorder"]
+    end
+
+    FILE[("av_fleet_capture.bin")]
+    AUDIT["Python recording inspector"]
+
+    CAM --> POOL
+    LIDAR --> POOL
+    CAN --> POOL
+    CAM -. descriptor .-> Q1
+    LIDAR -. descriptor .-> Q2
+    CAN -. descriptor .-> Q3
+    Q1 --> SYNC
+    Q2 --> SYNC
+    Q3 --> SYNC
+    SYNC --> GPU
+    Q1 --> REC
+    Q2 --> REC
+    Q3 --> REC
+    POOL -. payload reference .-> REC
+    REC --> FILE --> AUDIT
 ```
 
----
+The payload pool and descriptor queues are separate: queues carry metadata and buffer references while payload bytes remain in the shared pool. This diagram represents the intended software data flow; real hardware capture and DMA require platform-specific driver integration.
 
-## Key Systems Engineering Features
+## 🔍 Core modules
 
-1. **Zero-Copy POSIX Shared Memory Pool (`shm_open` + `mmap`)**
-   * Pre-faults 256 MB of shared memory at boot to eliminate minor page faults during real-time execution, with automatic container-safe fallback when `/dev/shm` is quota-restricted.
-   * Uses lock-free atomic reference counting (`compare_exchange_strong`) per memory slot so sensor producers and downstream consumers pass 64-byte descriptors rather than copying megabytes of raw frames.
-2. **Cache-Line Aligned Lock-Free SPSC Ring Buffers**
-   * Separates `head_` and `tail_` atomic indices onto distinct 64-byte cache lines (`alignas(64)`) to eliminate CPU false sharing across pinned producer/consumer cores.
-3. **Pure C ABI Sensor Plugin Interface (`sensor_c_abi.h`)**
-   * Decouples low-level kernel/V4L2/PCIe hardware driver modules from high-level C++20 perception and recording services.
-4. **Multi-Sensor PTP Time Synchronization (`time_sync.hpp`)**
-   * Aligns asynchronous Camera, LIDAR, and CAN/IMU streams using hardware PTP timestamps within bounded skew windows before GPU tensor assembly.
-5. **CUDA Pinned-Memory / DMA GPU Handoff (`gpu_handoff.hpp`)**
-   * Supports `cudaHostAllocMapped` for zero-copy GPU device pointer mapping with automatic POSIX `mlock` page-locked fallback on CPU-only development machines.
-6. **Deterministic Fast-Boot DAG Orchestrator (`service_manager.hpp`)**
-   * Staged dependency bring-up with microsecond initialization profiling and reverse-order graceful teardown.
+<details open>
+<summary><strong>01 · C11 sensor ABI</strong> — <code>include/abi/sensor_c_abi.h</code></summary>
 
----
+Defines a C-facing sensor descriptor interface so C and C++ components can exchange a plain-data representation. Cache-aligned descriptors are used to reduce the likelihood of unrelated queue metadata sharing a cache line.
 
-## Quick Start (`build.sh`)
+</details>
+
+<details>
+<summary><strong>02 · Shared-memory buffer pool</strong> — <code>include/core/shm_pool.hpp</code></summary>
+
+Maps a preallocated region and touches its pages during initialization to reduce first-touch page faults during normal processing. It checks available `/dev/shm` capacity and can fall back to an anonymous shared mapping when POSIX shared-memory allocation is unavailable.
+
+Buffer ownership lifecycle:
+
+1. Producer acquires a free slot.
+2. Consumers retain a reference when sharing a payload.
+3. Each consumer releases its reference after processing.
+4. The slot becomes reusable when its reference count reaches zero.
+
+Validate process-sharing guarantees for atomics and mappings on the intended target platform.
+
+</details>
+
+<details>
+<summary><strong>03 · Lock-free SPSC ring buffers</strong> — <code>include/core/lockfree_ring.hpp</code></summary>
+
+Uses separate cache-aligned producer and consumer indices with acquire/release ordering to publish descriptors between one producer and one consumer. This implementation is SPSC; it is not an MPMC queue.
+
+</details>
+
+<details>
+<summary><strong>04 · Timestamp alignment</strong> — <code>include/core/time_sync.hpp</code></summary>
+
+Maintains bounded history windows and matches auxiliary sensor timestamps against an arriving camera timestamp. The supplied default configuration emits a bundle when the maximum timestamp difference is within 25 ms.
+
+This is timestamp matching, not a complete IEEE 1588 PTP clock-synchronization implementation. Accurate PTP operation requires synchronized hardware clocks and platform integration.
+
+</details>
+
+<details>
+<summary><strong>05 · CPU / GPU memory handoff</strong> — <code>include/core/gpu_handoff.hpp</code></summary>
+
+When CUDA is available and enabled, the CUDA path can allocate mapped host memory and obtain a device-visible pointer. On a CPU-only build, the fallback uses aligned host memory and attempts to lock it with `mlock`.
+
+The fallback models the host-memory allocation/pinning aspect. It is **not** a GPU DMA transfer and does not establish zero-copy CPU-to-GPU operation. Validate CUDA behavior on supported NVIDIA hardware and drivers.
+
+</details>
+
+<details>
+<summary><strong>06 · Binary recorder and CRC32</strong> — <code>include/core/serializer.hpp</code>, <code>tools/inspect_recording.py</code></summary>
+
+Writes a packed 44-byte header followed by payload bytes. CRC32 is used to detect accidental corruption in the recording workflow.
+
+| Offset | Size | Field | Description |
+|---:|---:|---|---|
+| `0x00` | 4 B | `magic` | `0x41564452` (`AVDR`) |
+| `0x04` | 2 B | `version` | Protocol version |
+| `0x06` | 2 B | `sensor_type` | Sensor type enum |
+| `0x08` | 4 B | `sensor_id` | Sensor instance identifier |
+| `0x0C` | 8 B | `sequence_id` | Per-sensor sequence counter |
+| `0x14` | 8 B | `hw_timestamp_ns` | Hardware capture timestamp |
+| `0x1C` | 8 B | `ingest_timestamp_ns` | Middleware arrival timestamp |
+| `0x24` | 4 B | `payload_length` | Payload size in bytes |
+| `0x28` | 4 B | `payload_crc32` | CRC32 of payload |
+
+The documented format is little-endian. Cross-architecture interchange should explicitly encode/decode endianness rather than relying on native struct layout.
+
+</details>
+
+<details>
+<summary><strong>07 · Service lifecycle</strong> — <code>include/runtime/service_manager.hpp</code></summary>
+
+Initializes services in dependency stages and shuts them down in reverse order. The supplied design brings up memory resources before consumers and sensor producers, then tears producers down before consumers and memory resources.
+
+</details>
+
+## 📊 Sample benchmark snapshot
+
+The following values are transcribed from the supplied sample run:
 
 ```bash
-# Clean build, run unit tests, execute 5s live capture, and verify binary log
+./build.sh --cuda --duration=2
+```
+
+The run was performed on a CPU-only Linux environment where CMake did not find the CUDA toolkit. The GPU handoff therefore used the POSIX `mlock` fallback. These are application-reported sample measurements, not portable performance guarantees.
+
+### Build and test environment
+
+| Item | Sample result |
+|---|---|
+| Build configuration | Release |
+| Compiler | GNU 13.3.0 |
+| CUDA option | Requested |
+| CUDA toolkit | Not found |
+| Handoff backend | CPU-side `mlock` fallback |
+| CTest | 1/1 test passed |
+| Runtime duration | 2 seconds |
+
+### Startup measurements
+
+| Service | Reported initialization |
+|---|---:|
+| Shared-memory pool | 0.36 µs |
+| GPU handoff initialization | 0.09 µs |
+| Fusion and recorder | 74.24 µs |
+| Camera producer | 61.90 µs |
+| LiDAR producer | 42.57 µs |
+| CAN / IMU producer | 40.59 µs |
+| **Full stack** | **0.378 ms** |
+
+### Ingest telemetry
+
+| Stream | Packets | Data volume | Avg. ingest latency | Max. ingest latency |
+|---|---:|---:|---:|---:|
+| CAN / IMU | 401 | 0.11 MB | 0.34 µs | 0.83 µs |
+| LiDAR | 41 | 10.25 MB | 8.06 µs | 8.84 µs |
+| Camera | 62 | 31.00 MB | 16.00 µs | 20.67 µs |
+| **Total** | **504** | **41.37 MB** | — | — |
+
+**Additional sample observations:** 41 timestamp-matched bundles, zero reported dropped packets, zero reported CRC errors, 2307.91 µs average end-to-end latency, and 12302.37 µs maximum end-to-end latency.
+
+## 🖥️ Sample execution output
+
+```text
+Mode: Release | CUDA: ON | Duration: 2s
+
+CMake Warning:
+AV_ENABLE_CUDA=ON requested, but CUDAToolkit was not found.
+Falling back to POSIX mlock DMA simulation.
+
+[Build] C and C++ targets compiled successfully.
+[Test] CorePipelineTests: Passed
+[Test] 100% tests passed, 0 tests failed.
+
+[BOOT-UX] Full AV Platform Operational in 0.378 ms
+[RUNTIME] Streaming, timestamp-aligning and recording for 2 seconds...
+[SHUTDOWN] Services stopped in reverse dependency order.
+
+=============== AV PLATFORM TELEMETRY SUMMARY ===============
+POSIX SHM Segment       : /av_drive_sensor_pool (256 MB)
+GPU Handoff Backend     : Page-Locked mlock fallback
+Camera Frames Pub/Drop  : 62 / 0
+LIDAR Packets Pub/Drop  : 41 / 0
+CAN/IMU Msgs Pub/Drop   : 401 / 0
+PTP Synced GPU Bundles  : 41 (Avg Skew: 9.07 ms)
+Total Frames Processed  : 504
+CRC32 Integrity Errors  : 0
+Avg End-to-End Latency  : 2307.91 us
+Max End-to-End Latency  : 12302.37 us
+Fleet Log Written       : av_fleet_capture.bin (41.37 MB)
+
+[SUCCESS] Build, CTest, and fleet log verification complete.
+```
+
+## 📁 Repository structure
+
+```text
+AV-ZeroCopy-Sensor-Middleware/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── CMakeLists.txt
+├── build.sh
+├── include/
+│   ├── abi/
+│   │   └── sensor_c_abi.h
+│   ├── core/
+│   │   ├── gpu_handoff.hpp
+│   │   ├── lockfree_ring.hpp
+│   │   ├── serializer.hpp
+│   │   ├── shm_pool.hpp
+│   │   └── time_sync.hpp
+│   ├── runtime/
+│   │   └── service_manager.hpp
+│   └── sal/
+│       └── sensors.hpp
+├── src/
+│   └── main.cpp
+├── tests/
+│   └── test_suite.cpp
+└── tools/
+    └── inspect_recording.py
+```
+
+## 🚀 Quick start
+
+### Prerequisites
+
+- Linux
+- CMake
+- GCC or Clang with C++20 and C11 support
+- POSIX threads and shared-memory APIs
+- Python 3 for recording inspection
+- CUDA Toolkit and supported NVIDIA driver/GPU only for CUDA-path testing
+
+### Build and run
+
+```bash
+# Default build and sample run
 ./build.sh
 
-# Enable CUDA Pinned Memory (on GPU-equipped hosts) or Debug Sanitizers
-./build.sh --cuda
+# Run a 2-second sample
+./build.sh --duration=2
+
+# Request CUDA; use fallback if unavailable
+./build.sh --cuda --duration=2
+
+# Explicitly disable CUDA
+./build.sh --no-cuda
+
+# Debug build with sanitizers
 ./build.sh --debug --duration=2
 ```
 
+### Manual CMake workflow
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DAV_ENABLE_CUDA=ON
+
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+
+./build/av_middleware_node 5
+python3 tools/inspect_recording.py av_fleet_capture.bin
+```
+
+## 🛡️ Engineering notes
+
+| Topic | Design consideration |
+|---|---|
+| Backpressure | Non-blocking queue operations and explicit drop counters can avoid indefinite producer waits. Define the correct drop policy per sensor and safety requirement. |
+| Queue topology | The supplied ring buffer is SPSC. Use one queue per producer/consumer pair or implement and validate another topology. |
+| Shared-memory correctness | Validate ownership transitions, process-shared atomic behavior, memory ordering, crash recovery, and cleanup on target platforms. |
+| Real-time behavior | Pre-touching pages can reduce first-touch faults, but does not provide hard real-time guarantees by itself. |
+| CUDA behavior | A CPU fallback build does not validate CUDA execution, device pointer mapping, DMA performance, or GPU compatibility. |
+| PTP behavior | Timestamp matching does not synchronize clocks. Validate clock synchronization and timestamp provenance separately. |
+| Automotive deployment | No ISO 26262 compliance, production vehicle qualification, or safety certification is claimed. |
+
+## 🔭 Future validation & production readiness
+
+The following are **planned validation activities**, not claims that every item has already been completed:
+
+- [ ] Build and run on the intended Linux distribution and compiler.
+- [ ] Run tests under AddressSanitizer and UndefinedBehaviorSanitizer.
+- [ ] Stress buffer acquisition, reference counting, and queue wraparound.
+- [ ] Test shutdown while buffers are outstanding.
+- [ ] Verify shared-memory behavior across intended process boundaries.
+- [ ] Test CUDA allocation and device-pointer access on supported NVIDIA hardware.
+- [ ] Verify hardware timestamp sources and PTP clock synchronization.
+- [ ] Measure latency distributions, including percentiles, on target hardware.
+- [ ] Confirm resource limits, memory-lock permissions, and cleanup behavior.
+
+## 📄 License
+
+Add the repository's actual license here before publishing. No license is inferred by this README.
+
 ---
 
-## Verified Runtime Telemetry (Linux x86_64)
+<div align="center">
 
-* **Full AV Stack Cold-Boot:** `0.360 ms` across 6 staged services
-* **Sensor Ingest Latencies (0 Dropped Frames, 0 CRC32 Errors):**
-  * `VEHICLE_CAN` (200 Hz): **0.36 µs** avg ingest latency
-  * `LIDAR_128CH` (20 Hz): **8.33 µs** avg ingest latency
-  * `CAMERA_4K` (30 FPS): **16.02 µs** avg ingest latency
-* **Multi-Sensor PTP Synchronization:** `9.23 ms` average inter-sensor alignment skew across Camera, LIDAR, and CAN/IMU bundles
+**Built to explore low-level systems engineering for sensor-rich platforms.**
 
----
+<sub>C++20 · C11 · Linux · Shared Memory · Concurrency · Telemetry</sub>
 
-## JD Alignment Matrix
-
-| NVIDIA AV Platform Requirement | Implementation in This Repository |
-| :--- | :--- |
-| **Sensor Integration & SAL** (Cameras, LIDAR, IMU, CAN) | `include/sal/sensors.hpp` + `include/abi/sensor_c_abi.h` |
-| **Startup User Experience** | `include/runtime/service_manager.hpp` (Sub-millisecond staged bring-up) |
-| **Data Processing & Zero-Copy Performance** | `include/core/shm_pool.hpp` + `include/core/lockfree_ring.hpp` |
-| **Data Serialization & Fleet Collection** | `include/core/serializer.hpp` + `tools/inspect_recording.py` |
-| **CPU/GPU Memory & Concurrency Architecture** | `include/core/gpu_handoff.hpp` + `pthread_setaffinity_np` core pinning |
+</div>
