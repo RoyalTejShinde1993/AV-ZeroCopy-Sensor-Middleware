@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Default configuration
+# Default configuration (auto-detects nvcc if installed)
 BUILD_TYPE="Release"
-ENABLE_CUDA="OFF"
+if command -v nvcc >/dev/null 2>&1 || [ -d "/usr/local/cuda" ]; then
+    ENABLE_CUDA="ON"
+else
+    ENABLE_CUDA="OFF"
+fi
 RUN_DURATION=5
 CLEAN_FIRST=true
 
@@ -16,6 +20,9 @@ for arg in "$@"; do
         --cuda)
             ENABLE_CUDA="ON"
             ;;
+        --no-cuda)
+            ENABLE_CUDA="OFF"
+            ;;
         --no-clean)
             CLEAN_FIRST=false
             ;;
@@ -23,12 +30,12 @@ for arg in "$@"; do
             RUN_DURATION="${arg#*=}"
             ;;
         --help|-h)
-            echo "Usage: ./build.sh [--debug] [--cuda] [--no-clean] [--duration=<seconds>]"
+            echo "Usage: ./build.sh [--debug] [--cuda|--no-cuda] [--no-clean] [--duration=<seconds>]"
             exit 0
             ;;
         *)
             echo "[ERROR] Unknown option: $arg"
-            echo "Usage: ./build.sh [--debug] [--cuda] [--no-clean] [--duration=<seconds>]"
+            echo "Usage: ./build.sh [--debug] [--cuda|--no-cuda] [--no-clean] [--duration=<seconds>]"
             exit 1
             ;;
     esac
