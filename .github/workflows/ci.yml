@@ -1,0 +1,31 @@
+name: AV Middleware CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure & Build (Release)
+        run: |
+          mkdir -p build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          make -j$(nproc)
+
+      - name: Run Unit Tests
+        run: |
+          cd build
+          ctest --output-on-failure
+
+      - name: End-to-End Pipeline & Python Log Verification
+        run: |
+          cd build
+          ./av_middleware_node 2
+          python3 ../tools/inspect_recording.py av_fleet_capture.bin
